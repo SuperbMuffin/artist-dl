@@ -2,7 +2,7 @@
 
 A personal Python CLI tool for downloading music catalogs from YouTube channels and playlists — with date-range filtering, outline/preview, and safe resume support.
 
-##
+## Warning
 **Warning** this is in a very alpha state, im posting this to github less for use and more for people to maybe contribute *wink* and preservation!
 
 Most Features don't really work yet.
@@ -30,14 +30,11 @@ sudo pacman -S ffmpeg
 # 2. Clone / copy project
 git clone <this-repo> && cd artist-dl
 
-# 3. Install in editable mode (gives you the `artist-dl` command)
-pip install --user -e .
+# 3. Download an artist's last 2 years of uploads
+python run.py download https://www.youtube.com/@SomeArtist/videos --after now-2years
 
-# 4. Download an artist's last 2 years of uploads
-artist-dl download https://www.youtube.com/@SomeArtist/videos --after now-2years
-
-# 5. Preview a playlist without downloading
-artist-dl outline https://www.youtube.com/playlist?list=PL... --after now-1years
+# 4. Preview a playlist without downloading
+python run.py outline https://www.youtube.com/playlist?list=PL... --after now-1years
 ```
 
 ---
@@ -47,7 +44,7 @@ artist-dl outline https://www.youtube.com/playlist?list=PL... --after now-1years
 ### `download`
 
 ```
-artist-dl download URL [OPTIONS]
+python run.py download [URL] [OPTIONS]
 ```
 
 | Option | Short | Default | Description |
@@ -79,18 +76,18 @@ artist-dl download URL [OPTIONS]
 
 ```bash
 # All uploads from the last 2 years
-artist-dl download https://www.youtube.com/@Bonobo/videos --after now-2years
+python run.py download https://www.youtube.com/@Bonobo/videos --after now-2years
 
 # Specific date window, custom artist folder name
-artist-dl download https://www.youtube.com/playlist?list=PLxxx \
+python run.py download https://www.youtube.com/playlist?list=PLxxx \
     --after 20220101 --before 20231231 --artist "Aphex Twin"
 
 # Dry-run to see what would download
-artist-dl download https://www.youtube.com/@NTS_Radio/videos \
+python run.py download https://www.youtube.com/@NTS_Radio/videos \
     --after now-6months --dry-run
 
 # Strip sponsor segments, cap bandwidth
-artist-dl download https://... --after now-1years --sponsorblock
+python run.py download https://... --after now-1years --sponsorblock
 ```
 
 ### `outline`
@@ -98,7 +95,7 @@ artist-dl download https://... --after now-1years --sponsorblock
 Preview a track listing as Markdown without downloading.
 
 ```
-artist-dl outline URL [OPTIONS]
+python run.py outline [URL] [OPTIONS]
 ```
 
 | Option | Short | Default | Description |
@@ -110,10 +107,10 @@ artist-dl outline URL [OPTIONS]
 
 ```bash
 # Print outline to terminal
-artist-dl outline https://www.youtube.com/@FourTet/videos --after now-1years
+python run.py outline https://www.youtube.com/@FourTet/videos --after now-1years
 
 # Save to markdown file
-artist-dl outline https://www.youtube.com/playlist?list=PL... \
+python run.py outline https://www.youtube.com/playlist?list=PL... \
     --after now-2years --output ~/Documents/four-tet-catalog.md
 ```
 
@@ -121,17 +118,15 @@ artist-dl outline https://www.youtube.com/playlist?list=PL... \
 
 ```bash
 # Show resolved config
-artist-dl config
+python run.py config
 
 # Write starter config file
-artist-dl config --write-example
+python run.py config --write-example
 ```
 
 ---
 
 ## Configuration
-
-`~/.config/artist-dl/config.toml` (also checked: `~/.artist-dl.toml`, `./artist-dl.toml`)
 
 ```toml
 music_dir            = "~/Music"
@@ -150,12 +145,6 @@ outtmpl_artist_subdir = true
 # sponsorblock_remove = ["sponsor", "selfpromo", "interaction"]
 ```
 
-Generate this file automatically:
-
-```bash
-artist-dl config --write-example
-```
-
 ---
 
 ## Output structure
@@ -164,8 +153,8 @@ artist-dl config --write-example
 ~/Music/
 └── Bonobo/
     ├── archive.txt               ← resume file (don't delete!)
-    ├── 2024-03-15 - Rosewood.ogg
-    ├── 2023-11-02 - Tides.ogg
+    ├── 2024-03-15 - Rosewood.m4a
+    ├── 2023-11-02 - Tides.m4a
     └── …
 ```
 
@@ -195,17 +184,11 @@ After selection, FFmpegExtractAudio re-encodes (or remuxes if already Opus) into
 
 ---
 
-## Roadmap / Phase 2
+## Goals
 
 - [ ] `batch` subcommand — read URLs from a `.txt` / `.toml` file
 - [ ] `notify` flag — `notify-send` desktop notification on completion
-- [ ] `rich` integration — progress bars, coloured output
 - [ ] Last.fm / MusicBrainz metadata enrichment
 - [ ] AUR package (`artist-dl`)
 - [ ] Shell completions (`artist-dl --install-completion`)
 
----
-
-## License
-
-MIT
