@@ -8,15 +8,17 @@ from pathlib import Path
 from typing import Optional
 
 CONFIG_PATHS = [
-    Path.home() / ".config" / "artist-dl" / "config.toml",
-    Path.home() / ".artist-dl.toml",
-    Path("artist-dl.toml"),  # local project override
+    Path("artist-dl.toml"),
 ]
 
 DEFAULT_MUSIC_DIR = Path.home() / "Music"
-DEFAULT_FORMAT = "ba[abr>200]/bestaudio/best"
+DEFAULT_FORMAT = (
+    "bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]"
+    "/bestaudio[protocol!=m3u8][protocol!=m3u8_native]"
+    "/bestaudio/best"
+)
 DEFAULT_AUDIO_CODEC = "m4a"
-DEFAULT_AUDIO_QUALITY = "0"  # VBR best (maps to ~256kbps for opus)
+DEFAULT_AUDIO_QUALITY = "0"  # VBR best
 DEFAULT_CONTAINER = "m4a"
 
 
@@ -29,24 +31,15 @@ class Config:
     container: str = DEFAULT_CONTAINER
     concurrent_fragment_downloads: int = 4
     retries: int = 5
-    rate_limit: Optional[str] = None          # e.g. "2M" to cap bandwidth
-    sponsorblock_remove: list[str] = field(   # remove these SponsorBlock cats
-        default_factory=lambda: []
-    )
+    rate_limit: Optional[str] = None
+    sponsorblock_remove: list[str] = field(default_factory=lambda: [])
     embed_thumbnail: bool = True
     embed_metadata: bool = True
     verbose: bool = False
-
-    # Output template tokens:
-    #   %(artist)s  – channel/uploader name (fallback to uploader)
-    #   %(upload_date>%Y-%m-%d)s – formatted date
-    #   %(title)s   – video title
-    #   %(ext)s     – file extension after post-processing
-    outtmpl_artist_subdir: bool = True  # put files in Artist/ subfolder
+    outtmpl_artist_subdir: bool = True
 
     @classmethod
     def load(cls) -> "Config":
-        """Load config from the first config file found, with dataclass defaults."""
         cfg: dict = {}
         for path in CONFIG_PATHS:
             if path.exists():
@@ -70,15 +63,24 @@ class Config:
             outtmpl_artist_subdir=cfg.get("outtmpl_artist_subdir", True),
         )
 
-    def build_outtmpl(self, base_dir: Path) -> str:
-        """Return yt-dlp outtmpl string rooted at base_dir."""
-        if self.outtmpl_artist_subdir:
-            # Artist sub-folder based on uploader/channel name
-            return str(
-                base_dir / "%(uploader,channel,artist)s"
-                         / "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s"
-            )
-        return str(base_dir / "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s")
+    def build_outtmpl(
+        self,
+        base_dir: Path,
+        *,
+        artist_override: Optional[str] = None,
+        album_override: Optional[str] = None,
+    ) -> str:
+        """Return yt-dlp outtmpl string rooted at base_dir.
+
+        Output: base_dir / Artist / Album / YYYY-MM-DD - Title.ext
+        Falls back to yt-dlp metadata fields if artist/album not overridden.
+        """
+        artist_part = artist_override or "%(uploader,channel,artist)s"
+        album_part = album_override or "%(album,playlist_title,uploader)s"
+        return str(
+            base_dir / artist_part / album_part
+            / "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s"
+        )
 
     def build_ydl_opts(
         self,
@@ -88,6 +90,8 @@ class Config:
         before: Optional[str] = None,
         dry_run: bool = False,
         archive: Optional[Path] = None,
+        artist_override: Optional[str] = None,
+        album_override: Optional[str] = None,
     ) -> dict:
         """Assemble the full yt_dlp options dict."""
         postprocessors: list[dict] = [
@@ -119,14 +123,18 @@ class Config:
         opts: dict = {
             "format": self.audio_format,
             "postprocessors": postprocessors,
-            "outtmpl": self.build_outtmpl(base_dir),
+            "outtmpl": self.build_outtmpl(
+                base_dir,
+                artist_override=artist_override,
+                album_override=album_override,
+            ),
             "concurrent_fragment_downloads": self.concurrent_fragment_downloads,
             "retries": self.retries,
             "quiet": not self.verbose,
             "no_warnings": not self.verbose,
             "simulate": dry_run,
             "writethumbnail": self.embed_thumbnail,
-            "ignoreerrors": True,   # skip unavailable videos, keep going
+            "ignoreerrors": True,
         }
 
         if after:

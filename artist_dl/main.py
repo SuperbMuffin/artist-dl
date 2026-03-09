@@ -10,7 +10,6 @@ Subcommands
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -21,21 +20,20 @@ from .downloader import download_catalog, generate_outline, resolve_date
 
 app = typer.Typer(
     name="artist-dl",
-    help="Download music catalogs from YouTube channels/playlists as high-quality Opus audio.",
+    help="Download music catalogs from YouTube channels/playlists as high-quality m4a audio.",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
 
 
 # ---------------------------------------------------------------------------
-# Shared option factories (DRY)
+# Shared option factories
 # ---------------------------------------------------------------------------
 
 _URL_ARG = typer.Argument(..., help="YouTube channel, playlist, or video URL.")
 
 _AFTER_OPT = typer.Option(
-    None,
-    "--after", "-a",
+    None, "--after", "-a",
     help=(
         "Only include videos uploaded on or after this date. "
         "Accepts YYYYMMDD or relative: now, now-2years, now-6months, now-3weeks, now-10days."
@@ -44,22 +42,25 @@ _AFTER_OPT = typer.Option(
 )
 
 _BEFORE_OPT = typer.Option(
-    "now",
-    "--before", "-b",
-    help="Only include videos uploaded on or before this date (default: now). Same format as --after.",
+    "now", "--before", "-b",
+    help="Only include videos uploaded on or before this date (default: now).",
     metavar="DATE",
 )
 
 _ARTIST_OPT = typer.Option(
-    None,
-    "--artist",
-    help="Override the artist/folder name (defaults to channel uploader name).",
+    None, "--artist",
+    help="Override artist folder name (defaults to channel/uploader name from YouTube).",
+    metavar="NAME",
+)
+
+_ALBUM_OPT = typer.Option(
+    None, "--album",
+    help="Override album folder name (defaults to playlist title, then uploader name).",
     metavar="NAME",
 )
 
 _DIR_OPT = typer.Option(
-    None,
-    "--dir", "-d",
+    None, "--dir", "-d",
     help="Output base directory (overrides config music_dir).",
     metavar="PATH",
 )
@@ -77,6 +78,7 @@ def download(
     after: Optional[str] = _AFTER_OPT,
     before: str = _BEFORE_OPT,
     artist: Optional[str] = _ARTIST_OPT,
+    album: Optional[str] = _ALBUM_OPT,
     dir: Optional[Path] = _DIR_OPT,
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Simulate download without saving files."),
     no_archive: bool = typer.Option(False, "--no-archive", help="Disable resume archive file."),
@@ -84,7 +86,7 @@ def download(
     no_meta: bool = typer.Option(False, "--no-meta", help="Skip embedding metadata tags."),
     sponsorblock: bool = typer.Option(
         False, "--sponsorblock",
-        help="Remove SponsorBlock-marked segments (sponsor, selfpromo, interaction)."
+        help="Remove SponsorBlock-marked segments (sponsor, selfpromo, interaction).",
     ),
     verbose: bool = _VERBOSE_OPT,
 ) -> None:
@@ -92,7 +94,6 @@ def download(
 
     cfg = Config.load()
 
-    # CLI flag overrides
     if no_thumb:
         cfg.embed_thumbnail = False
     if no_meta:
@@ -101,20 +102,15 @@ def download(
         cfg.sponsorblock_remove = ["sponsor", "selfpromo", "interaction"]
     cfg.verbose = verbose
 
-    # Resolve dates
     resolved_after = resolve_date(after) if after else None
     resolved_before = resolve_date(before)
-
-    # Build base dir
     base_dir = dir or cfg.music_dir
-    if artist:
-        base_dir = base_dir / artist
 
-    typer.echo(f"▶  artist-dl download")
+    typer.echo("▶  artist-dl download")
     typer.echo(f"   URL     : {url}")
     typer.echo(f"   After   : {resolved_after or 'none'}")
     typer.echo(f"   Before  : {resolved_before}")
-    typer.echo(f"   Output  : {base_dir}")
+    typer.echo(f"   Output  : {base_dir / (artist or '<uploader>') / (album or '<playlist>')}")
     typer.echo(f"   Codec   : {cfg.audio_codec} / quality={cfg.audio_quality}")
     typer.echo(f"   Dry-run : {dry_run}")
     typer.echo("")
@@ -129,6 +125,8 @@ def download(
             dry_run=dry_run,
             use_archive=not no_archive,
             verbose=verbose,
+            artist_override=artist,
+            album_override=album,
         )
     except KeyboardInterrupt:
         typer.echo("\n⏹  Interrupted. Run again to resume (archive tracks progress).", err=True)
@@ -170,7 +168,7 @@ def outline(
     resolved_after = resolve_date(after) if after else None
     resolved_before = resolve_date(before)
 
-    typer.echo(f"🔍 Fetching metadata…", err=True)
+    typer.echo("🔍 Fetching metadata…", err=True)
 
     try:
         text = generate_outline(
@@ -194,8 +192,28 @@ def outline(
 
 
 # ---------------------------------------------------------------------------
-# config  (diagnostic)
+# config
 # ---------------------------------------------------------------------------
+
+_EXAMPLE_TOML = """\
+# artist-dl configuration  (~/.config/artist-dl/config.toml)
+
+music_dir            = "~/Music"
+audio_format         = "bestaudio[ext=m4a]/bestaudio/best"
+audio_codec          = "m4a"
+audio_quality        = "0"
+container            = "m4a"
+concurrent_fragment_downloads = 4
+retries              = 5
+# rate_limit         = "2M"
+embed_thumbnail      = true
+embed_metadata       = true
+verbose              = false
+outtmpl_artist_subdir = true
+
+# sponsorblock_remove = ["sponsor", "selfpromo", "interaction"]
+"""
+
 
 @app.command(name="config")
 def show_config(
@@ -206,33 +224,12 @@ def show_config(
 ) -> None:
     """Show resolved configuration (and optionally write an example config file)."""
 
-    example_toml = """\
-# artist-dl configuration  (~/.config/artist-dl/config.toml)
-# All values below show the built-in defaults.
-
-music_dir            = "~/Music"
-audio_format         = "ba[abr>200]/bestaudio/best"
-audio_codec          = "opus"
-audio_quality        = "0"          # VBR best (~256 kbps)
-container            = "ogg"
-concurrent_fragment_downloads = 4
-retries              = 5
-# rate_limit         = "2M"         # bandwidth cap, e.g. "1M", "500K"
-embed_thumbnail      = true
-embed_metadata       = true
-verbose              = false
-outtmpl_artist_subdir = true        # put files in Artist/ subfolder
-
-# Remove SponsorBlock segments (empty = disabled):
-# sponsorblock_remove = ["sponsor", "selfpromo", "interaction"]
-"""
-
     if write_example:
-        dest = Path.home() / ".config" / "artist-dl" / "config.toml"
-        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest = Path("artist-dl.toml")
+
         if dest.exists():
             typer.confirm(f"{dest} already exists. Overwrite?", abort=True)
-        dest.write_text(example_toml, encoding="utf-8")
+        dest.write_text(_EXAMPLE_TOML, encoding="utf-8")
         typer.echo(f"✓  Example config written to {dest}")
         return
 

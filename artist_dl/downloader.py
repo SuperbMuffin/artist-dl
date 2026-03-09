@@ -44,7 +44,6 @@ def resolve_date(date_str: str) -> str:
         if unit == "year":
             result = today.replace(year=today.year - amount)
         elif unit == "month":
-            # approximate: subtract 30 days per month
             result = today - timedelta(days=amount * 30)
         elif unit == "week":
             result = today - timedelta(weeks=amount)
@@ -52,7 +51,6 @@ def resolve_date(date_str: str) -> str:
             result = today - timedelta(days=amount)
         return result.strftime("%Y%m%d")
 
-    # Validate absolute YYYYMMDD
     cleaned = date_str.replace("-", "").strip()
     try:
         datetime.strptime(cleaned, "%Y%m%d")
@@ -79,7 +77,6 @@ def _fmt_duration(seconds: Optional[int]) -> str:
 
 
 def _fmt_date(raw: Optional[str]) -> str:
-    """Convert YYYYMMDD → YYYY-MM-DD."""
     if not raw or len(raw) != 8:
         return raw or "unknown"
     return f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
@@ -93,11 +90,7 @@ def generate_outline(
     before: Optional[str] = None,
     json_out: bool = False,
 ) -> str:
-    """
-    Fetch playlist/channel metadata and return a markdown outline string.
-    No audio is downloaded.
-    """
-    # We use flat_playlist to fetch metadata quickly (no individual page loads)
+    """Fetch playlist/channel metadata and return a markdown outline. No audio downloaded."""
     ydl_opts: dict = {
         "quiet": True,
         "no_warnings": True,
@@ -120,7 +113,6 @@ def generate_outline(
 
     entries = info.get("entries") or []
 
-    # Filter by date if we have dates (flat extraction may not have upload_date)
     after_dt = datetime.strptime(after, "%Y%m%d") if after else None
     before_dt = datetime.strptime(before, "%Y%m%d") if before and before != "now" else None
 
@@ -178,7 +170,7 @@ def generate_outline(
 class ProgressLogger:
     """Minimal yt-dlp logger that plays nicely with Typer output."""
 
-    def debug(self, msg: str) -> None:  # noqa: D401
+    def debug(self, msg: str) -> None:
         if msg.startswith("[debug]"):
             return
         print(msg)
@@ -203,23 +195,21 @@ def download_catalog(
     dry_run: bool = False,
     use_archive: bool = True,
     verbose: bool = False,
+    artist_override: Optional[str] = None,
+    album_override: Optional[str] = None,
 ) -> None:
     """
     Download audio from *url* according to *cfg* into *base_dir*.
 
-    Parameters
-    ----------
-    url:         YouTube channel / playlist URL (or single video URL)
-    cfg:         Config object (controls format, codec, quality, etc.)
-    base_dir:    Root directory for output files (e.g. ~/Music/ArtistName)
-    after:       YYYYMMDD – skip videos uploaded before this date
-    before:      YYYYMMDD – skip videos uploaded after this date
-    dry_run:     Simulate without downloading (passes --simulate to yt-dlp)
-    use_archive: Maintain an archive file to enable safe resume
-    verbose:     Show full yt-dlp debug output
+    Files land at: base_dir / Artist / Album / YYYY-MM-DD - Title.m4a
+    Artist and Album are pulled from YouTube metadata unless overridden.
+    The archive file lives at base_dir/.archive.txt (shared across all downloads).
     """
     base_dir.mkdir(parents=True, exist_ok=True)
-    archive = base_dir / "archive.txt" if use_archive else None
+
+    # Single global archive at the music root — avoids the file landing in the
+    # wrong place when artist/album folders are named dynamically by yt-dlp.
+    archive = base_dir / ".archive.txt" if use_archive else None
 
     ydl_opts = cfg.build_ydl_opts(
         base_dir,
@@ -227,13 +217,13 @@ def download_catalog(
         before=before,
         dry_run=dry_run,
         archive=archive,
+        artist_override=artist_override,
+        album_override=album_override,
     )
 
-    # Attach our logger if not verbose (yt-dlp quiet mode hides progress bars,
-    # so we keep quiet=False but suppress noisy lines via the logger).
     if not verbose:
         ydl_opts["logger"] = ProgressLogger()
-        ydl_opts["quiet"] = False  # needed for progress hooks
+        ydl_opts["quiet"] = False
         ydl_opts["no_warnings"] = True
     else:
         ydl_opts["verbose"] = True
