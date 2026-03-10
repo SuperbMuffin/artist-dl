@@ -13,9 +13,10 @@ CONFIG_PATHS = [
 
 DEFAULT_MUSIC_DIR = Path.home() / "Music"
 DEFAULT_FORMAT = (
-    "bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]"
+    "bestaudio[ext=m4a][protocol=https]"
+    "/bestaudio[protocol=https]"
     "/bestaudio[protocol!=m3u8][protocol!=m3u8_native]"
-    "/bestaudio/best"
+    "/bestaudio"
 )
 DEFAULT_AUDIO_CODEC = "m4a"
 DEFAULT_AUDIO_QUALITY = "0"  # VBR best
@@ -145,5 +146,21 @@ class Config:
             opts["download_archive"] = str(archive)
         if self.rate_limit:
             opts["ratelimit"] = self.rate_limit
+        # always strip YouTube junk fields
+        cleanup_args = [
+            "-metadata", "comment=",
+            "-metadata", "description=",
+            "-metadata", "synopsis=",
+        ]
+        opts["postprocessor_args"] = {"ffmpeg": cleanup_args}
 
+        if artist_override or album_override:
+            args = []
+            if artist_override:
+                args += ["-metadata", f"artist={artist_override}"]
+                args += ["-metadata", f"album_artist={artist_override}"]
+            if album_override:
+                args += ["-metadata", f"album={album_override}"]
+        opts["postprocessor_args"] = {"ffmpeg": cleanup_args + args} 
+        
         return opts
